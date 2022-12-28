@@ -1,0 +1,8 @@
+pages
+thumbnails
+.env
+*.ipynb
+.DS_Store
+.idea
+venv
+inputs_backup.txt

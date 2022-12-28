@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+
+import ftplib
+import urllib
+import datetime
+import jinja2
+import sys
+import telepot
+import re
+import json
+from dotenv import load_dotenv
+import os
+from PIL import Image
+
+load_dotenv(".env")
+
+FTP_SERVER = os.environ.get('FTP_SERVER')
+FTP_LOGIN = os.environ.get('FTP_LOGIN')
+FTP_PASSWORD = os.environ.get('FTP_PASSWORD')
+
+INPUTS_BACKUP_FILEPATH = os.environ.get('INPUTS_BACKUP_FILEPATH')
+
+TEST_CHANNEL_ID = os.environ.get('TEST_CHANNEL_ID')
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+
+SCRIPT_ROOT_DIR = os.environ.get('SCRIPT_ROOT_DIR')
+FTP_ROOT_DIR = os.environ.get('FTP_ROOT_DIR')
+DOMAIN_ROOT_URL = os.environ.get('DOMAIN_ROOT_URL')
+
+
+bot = telepot.Bot(TELEGRAM_BOT_TOKEN)
+
+def directory_exists(session, dir):
+    try:
+        session.cwd(dir)
+        return True
+    except:
+        return False
+
+
+def chdir(session, dir):
+    if directory_exists(session, dir) is False:  # (or negate, whatever you prefer for readability)
+        session.mkd(dir)
+
+
+def get_images_links(session, filepaths):
+    year = datetime.date.today().year
+    month = datetime.date.today().month
+
+    dir = f'{FTP_ROOT_DIR}/static/{year}/{month}'
+
+    chdir(session, dir + '/thumbnails')
+
+    links = []
+
+    for filepath in filepaths:
+        file = open(filepath, 'rb')
+        filename = filepath.split('/')[-1]
+        session.storbinary(f'STOR {dir}/{filename}', file)
+        file.close()
+
+        image = Image.open(filepath)
+        image.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        thumbnail_filename = '.'.join(filename.split('.')[:-1]) + '+thumbnail.' + filename.split('.')[-1]
+        image.save(f'{SCRIPT_ROOT_DIR}/thumbnails/' + thumbnail_filename, "JPEG")
+
+        file = open(f'{SCRIPT_ROOT_DIR}/thumbnails/' + thumbnail_filename, 'rb')
+        filename = filepath.split('/')[-1]
+        session.storbinary(f'STOR {dir}/thumbnails/{thumbnail_filename}', file)
+        file.close()
+
+        encoded_filename = urllib.parse.quote(filename)
+        encoded_thumbnail_filename = urllib.parse.quote(thumbnail_filename)
+
+        links.append({'image_src': f'{DOMAIN_ROOT_URL}/static/{year}/{month}/{encoded_filename}',
+                      'thumbnail_src': f'{DOMAIN_ROOT_URL}/static/{year}/{month}/thumbnails/{encoded_thumbnail_filename}'})
+
+    return links
+
+
+def get_filename(filepath):
+    return filepath.split('/')[-1]
+
+
+def get_links_props(filepaths, links):
+    links_props = []
+    for i, filepath in enumerate(filepaths):
+        filename = get_filename(filepath)
+        links_props.append({'href': links[i]['image_src'], 'src': links[i]['thumbnail_src'], 'filename': filename})
+
+    return links_props
+
+
+def get_html_file(stereo_links_props, anaglyph_links_props, caption):
+    template = jinja2.Template("""
+    <html>
+    <head>
+        <title>{{caption}}</title>
+    </head>
+    <body>
+        <h2>{{caption}}</h2>
+        <p>Anaglyphs:</p>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            {% for attr in anaglyph_links %}
+            <a href="{{ attr.href }}">
+                <img src='{{ attr.src }}' alt='attr.filename'><br/>
+                {{ attr.filename }}
+            </a>
+            {% endfor %}
+        </div>
+        <br>
+        <p>Stereo pairs:</p>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            {% for attr in stereo_pair_links %}
+            <a href="{{ attr.href }}">
+                <img src='{{ attr.src }}' alt='attr.filename'><br/>
+                {{ attr.filename }}
+            </a>
+            {% endfor %}
+        </div>
+    </body>
+    </html>""")
+
+    html_content = template.render(
+        {'caption': caption, 'stereo_pair_links': stereo_links_props, 'anaglyph_links': anaglyph_links_props})
+
+    html_file_name = f'{caption}.html'
+    html_file = open(f'{SCRIPT_ROOT_DIR}/pages/' + html_file_name, 'w')
+    html_file.write(html_content)
+    html_file.close()
+
+    return html_file, html_file_name
+
+
+def get_page_link(session, filename):
+    year = datetime.date.today().year
+    month = datetime.date.today().month
+
+    dir = f'{FTP_ROOT_DIR}/posts/{year}/{month}'
+
+    chdir(session, dir)
+
+    file = open(f'{SCRIPT_ROOT_DIR}/pages/' + filename, 'rb')
+    session.storbinary(f'STOR {dir}/{filename}', file)
+
+    encoded_filename = urllib.parse.quote(filename)
+    link = f'{DOMAIN_ROOT_URL}/posts/{year}/{month}/{encoded_filename}'
+
+    return link
+
+
+def split_paths(paths):
+    split_paths_with_delimiter = re.split(r'([^\\]) ', paths)
+    split_paths = [(i + j).replace('\\', '') for i, j in
+                   zip(split_paths_with_delimiter[::2], split_paths_with_delimiter[1::2])]
+
+    return split_paths
+
+
+def process(inputs):
+    session = ftplib.FTP(FTP_SERVER, FTP_LOGIN, FTP_PASSWORD)
+
+    caption = inputs['caption']
+    stereo_pairs_paths = inputs['stereo_pairs_paths']
+    anaglyphs_paths = inputs['anaglyphs_paths']
+
+    print('Stereo pairs uploading... ', end='', flush=True)
+
+    stereo_pairs_links = get_images_links(session, stereo_pairs_paths)
+    print('[OK]')
+
+    print('Anaglyphs uploading... ', end='', flush=True)
+    anaglyphs_links = get_images_links(session, anaglyphs_paths)
+    print('[OK]')
+
+    stereo_pairs_links_props = get_links_props(stereo_pairs_paths, stereo_pairs_links)
+    anaglyphs_links_props = get_links_props(anaglyphs_paths, anaglyphs_links)
+
+    print('HTML creating... ', end='', flush=True)
+    html_file, html_file_name = get_html_file(stereo_pairs_links_props, anaglyphs_links_props, caption)
+    print('[OK]')
+
+    print('HTML uploading... ', end='', flush=True)
+    page_link = get_page_link(session, html_file_name)
+    print('[OK]')
+
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    escaped_caption = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', caption)
+    message = f'{escaped_caption}\n[anaglyphs]({page_link})'
+    medias = []
+
+    for i, path in enumerate(stereo_pairs_paths):
+        media = {'media': open(path, 'rb'), 'type': 'document'}
+
+        if i == len(stereo_pairs_paths) - 1:
+            media = {**media, 'caption': message, 'parse_mode': 'MarkdownV2'}
+
+        medias.append(media)
+
+    print('Post sending... ', end='', flush=True)
+    bot.sendMediaGroup(TEST_CHANNEL_ID, media=medias)
+    print('[OK]')
+
+    session.quit()
+
+
+def write_inputs(inputs):
+    backup_inputs_file = open(INPUTS_BACKUP_FILEPATH, 'w')
+    backup_inputs_file.write(json.dumps(inputs))
+    backup_inputs_file.close()
+
+
+def read_inputs():
+    backup_inputs_file = open(INPUTS_BACKUP_FILEPATH, 'r')
+    inputs = json.loads(backup_inputs_file.read())
+    backup_inputs_file.close()
+
+    return inputs
+
+
+try:
+    restore_last_inputs = sys.argv[1] in ['-r', '--restore']
+except:
+    restore_last_inputs = False
+
+if restore_last_inputs:
+    inputs = read_inputs()
+
+    caption = inputs['caption']
+    stereo_pairs_paths = inputs['stereo_pairs_paths']
+    anaglyphs_paths = inputs['anaglyphs_paths']
+
+    print()
+    print(caption)
+    print()
+    new_caption = input('New caption [skip]: ')
+    if new_caption:
+        caption = new_caption
+
+    print()
+    for path in stereo_pairs_paths:
+        print(get_filename(path))
+    print()
+
+    new_stereo_pairs_paths = split_paths(input('Drag new stereo pairs [skip]: '))
+    if new_stereo_pairs_paths:
+        stereo_pairs_paths = new_stereo_pairs_paths
+
+    print()
+    for path in anaglyphs_paths:
+        print(get_filename(path))
+    print()
+
+    new_anaglyphs_paths = split_paths(input('Drag new anaglyphs [skip]: '))
+    if new_anaglyphs_paths:
+        anaglyphs_paths = new_anaglyphs_paths
+
+    inputs = {'caption': caption, 'stereo_pairs_paths': stereo_pairs_paths, 'anaglyphs_paths': anaglyphs_paths}
+    write_inputs(inputs)
+else:
+    caption = input('Caption: ')
+    stereo_pairs_paths = split_paths(input('Drag stereo pairs: '))
+    anaglyphs_paths = split_paths(input('Drag anaglyphs: '))
+
+    inputs = {'caption': caption, 'stereo_pairs_paths': stereo_pairs_paths, 'anaglyphs_paths': anaglyphs_paths}
+    write_inputs(inputs)
+
+print()
+process(inputs)
