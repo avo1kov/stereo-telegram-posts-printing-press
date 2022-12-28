@@ -219,7 +219,7 @@ def read_inputs():
 
 
 try:
-    restore_last_inputs = sys.argv[1] in ['-r', '--restore']
+    restore_last_inputs = sys.argv[1] in ['-l', '--last']
 except:
     restore_last_inputs = False
 

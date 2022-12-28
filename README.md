@@ -22,7 +22,11 @@ I want to attach anaglyphs to each stereo pair. But it is not comfortable watch 
 
 ![page example](./docs/page-example.png)
 
-## Demo
+## Usage and Demo
+
+Follow instructions in the video below.
+
+You can use flag `-l` or `--last` to edit the last posting attempt. 
 
 https://youtu.be/QPzmLHo1Cug
 
