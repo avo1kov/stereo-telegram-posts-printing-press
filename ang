@@ -124,7 +124,8 @@ def get_html_file(stereo_links_props, anaglyph_links_props, caption):
     html_content = template.render(
         {'caption': caption, 'stereo_pair_links': stereo_links_props, 'anaglyph_links': anaglyph_links_props})
 
-    html_file_name = f'{caption}.html'
+    shorted_caption = ' '.join(caption.split(' ')[:3])
+    html_file_name = f'{shorted_caption}.html'
     html_file = open(f'{SCRIPT_ROOT_DIR}/pages/' + html_file_name, 'w')
     html_file.write(html_content)
     html_file.close()
