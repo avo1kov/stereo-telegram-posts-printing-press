@@ -27,8 +27,8 @@ SCRIPT_ROOT_DIR = os.environ.get('SCRIPT_ROOT_DIR')
 FTP_ROOT_DIR = os.environ.get('FTP_ROOT_DIR')
 DOMAIN_ROOT_URL = os.environ.get('DOMAIN_ROOT_URL')
 
-
 bot = telepot.Bot(TELEGRAM_BOT_TOKEN)
+
 
 def directory_exists(session, dir):
     try:
@@ -38,9 +38,14 @@ def directory_exists(session, dir):
         return False
 
 
-def chdir(session, dir):
-    if directory_exists(session, dir) is False:  # (or negate, whatever you prefer for readability)
-        session.mkd(dir)
+def chdir(session, path):
+    dirs = path.split('/')
+    current_path = ''
+    for dir in dirs:
+        current_path += f'/{dir}'
+
+        if directory_exists(session, current_path) is False:  # (or negate, whatever you prefer for readability)
+            session.mkd(current_path)
 
 
 def get_images_links(session, filepaths):
@@ -190,8 +195,8 @@ def process(inputs):
     message = f'{escaped_caption}\n[anaglyphs]({page_link})'
     medias = []
 
-    for i, path in enumerate(stereo_pairs_paths):
-        media = {'media': open(path, 'rb'), 'type': 'document'}
+    for i, link in enumerate(stereo_pairs_links):
+        media = {'media': link['image_src'], 'type': 'document'}
 
         if i == len(stereo_pairs_paths) - 1:
             media = {**media, 'caption': message, 'parse_mode': 'MarkdownV2'}
