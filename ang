@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import os
 from PIL import Image
 
-load_dotenv(".env")
+load_dotenv("/Users/thevolkov/Documents/reps/stereo-anaglyphs-uploader/.env")
 
 FTP_SERVER = os.environ.get('FTP_SERVER')
 FTP_LOGIN = os.environ.get('FTP_LOGIN')
@@ -20,7 +20,7 @@ FTP_PASSWORD = os.environ.get('FTP_PASSWORD')
 
 INPUTS_BACKUP_FILEPATH = os.environ.get('INPUTS_BACKUP_FILEPATH')
 
-TEST_CHANNEL_ID = os.environ.get('TEST_CHANNEL_ID')
+TST_CHANNEL_ID = os.environ.get('TEST_CHANNEL_ID')
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
 SCRIPT_ROOT_DIR = os.environ.get('SCRIPT_ROOT_DIR')
